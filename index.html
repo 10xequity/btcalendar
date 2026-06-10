@@ -222,6 +222,9 @@
   .ev[draggable="true"]{cursor:grab}
   .ev[draggable="true"]:active{cursor:grabbing}
   .cell.dragover{border-color:var(--gold);box-shadow:inset 0 0 0 2px var(--gold)}
+  #livestatus{position:fixed;left:12px;bottom:12px;z-index:70;font-size:.66rem;font-weight:600;padding:6px 11px;border-radius:99px;border:1px solid var(--border);background:var(--card);color:var(--t3);max-width:280px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+  #livestatus.ok{border-color:var(--green);color:var(--green)}
+  #livestatus.warn{border-color:var(--gold);color:var(--gold)}
 </style>
 </head>
 <body class="internal">
@@ -280,7 +283,10 @@
 // ====== CONFIG — set when wiring live data. Calendar reads by Sheet ID, which is
 // PERMANENT: renaming or moving the file in Google Drive does NOT change it, so the
 // link won't break. Only making a brand-new file creates a new ID (then update one line). ======
-const CONFIG = { sheetId:'', eventsGid:'0', operatorsGid:'' };  // from the sheet URL: .../d/<sheetId>/edit#gid=<gid>
+const CONFIG = {
+  sheetId:'1Q8SwD1D7r3sZAb87_EZTErX1wUh4zvtMj7CpYmE7H8w',
+  csvUrl:'https://docs.google.com/spreadsheets/d/e/2PACX-1vTdFA_yEnbCUnJR1IWjGuFJMSSn5706MBRCOpgrFmr5EicKVQv8gafYfB12Tl025ib323txYqfvpSrB/pub?gid=1462846886&single=true&output=csv'
+};  // Sheet ID is permanent (survives rename/move). csvUrl = published Events tab.
 
 const ROOMS = ['Dance-Den 1','Dance-Den 2','Yoga-Den','Social Den','Event-Den','Oda'];
 
@@ -372,7 +378,8 @@ const EVENTS = [
 ];
 
 /* ============================ STATE ============================ */
-let state = { view:'internal', mode:'month', month:5, year:2026, selDate:'2026-06-07', selEvent:null, focusDate:'2026-06-07', kbNav:false,
+function _today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+let state = { view:'internal', mode:'month', month:new Date().getMonth(), year:new Date().getFullYear(), selDate:_today(), selEvent:null, focusDate:_today(), kbNav:false,
   colorBy:'operator', ts:1, theme:'dark', op:'all', sport:'all', type:'all' };
 let draggedId=null;
 
@@ -420,7 +427,7 @@ function eventsOn(dateStr){ return visibleEvents().filter(e=>dateRange(e).includ
 /* ============================ RENDER: MONTH ============================ */
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const TODAY='2026-06-04';
+const TODAY=_today();
 
 function renderMonth(){
   const cw=document.getElementById('calwrap');
@@ -779,8 +786,55 @@ function openQuickAdd(dateStr){
   };
   document.addEventListener('keydown',function esc(ev){ if(ev.key==='Escape'){close();document.removeEventListener('keydown',esc);} });
 }
+function _csv(text){ const rows=[]; let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else { if(c==='"')q=true; else if(c===','){row.push(cur);cur='';} else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';} else if(c!=='\r')cur+=c; } }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); } return rows; }
+function _to24(t){ t=(t||'').trim(); if(!t)return '00:00';
+  const m=t.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?/); if(!m)return '00:00';
+  let h=+m[1]; const ap=(m[3]||'').toUpperCase(); if(ap==='PM'&&h<12)h+=12; if(ap==='AM'&&h===12)h=0;
+  return String(h).padStart(2,'0')+':'+m[2]; }
+function _date(d){ d=(d||'').trim(); if(!d)return '';
+  let m=d.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return m[1]+'-'+m[2]+'-'+m[3];
+  m=d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m)return m[3]+'-'+String(+m[1]).padStart(2,'0')+'-'+String(+m[2]).padStart(2,'0');
+  const x=new Date(d); return isNaN(x)?d:x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); }
+function _atoms(sp){ return (sp||'').split(',').map(s=>s.trim()).filter(Boolean).map(s=>{const m=s.match(/(\d+)/);return m?Number(m[1]):s;}); }
+function _yn(v){ return /^(y|true|1)/i.test((v||'').trim()); }
+function _num(v){ const x=parseInt((v||'').replace(/[^0-9.]/g,''),10); return isNaN(x)?undefined:x; }
+function _splitL(v){ return (v||'').split(',').map(s=>s.trim()).filter(Boolean); }
+function setStatus(msg,kind){ const el=document.getElementById('livestatus'); if(!el)return; el.textContent=msg; el.className=kind||''; if(kind==='ok')setTimeout(()=>{el.style.transition='opacity .6s';el.style.opacity='0';},4500); }
+async function loadLiveData(){
+  if(!CONFIG.csvUrl){ setStatus('Demo data (no sheet configured)','warn'); return; }
+  try{
+    const res=await fetch(CONFIG.csvUrl,{redirect:'follow'}); if(!res.ok) throw 0;
+    const rows=_csv(await res.text()); if(rows.length<2) throw 0;
+    const head=rows[0].map(s=>s.trim());
+    if(head.indexOf('Event Title')<0){ setStatus('Demo data — published tab is not the Events tab','warn'); return; }
+    const gi=nm=>head.indexOf(nm); const g=(r,nm)=>{const i=gi(nm);return i>=0?(r[i]||'').trim():'';};
+    const out=[];
+    for(let ri=1;ri<rows.length;ri++){ const r=rows[ri]; const title=g(r,'Event Title'); if(!title)continue;
+      const start=_date(g(r,'Start Date')); const end=_date(g(r,'End Date'))||start;
+      const sp=g(r,'Spaces (atoms)'); const pn=g(r,'POC Name'),pe=g(r,'POC Email'),pp=g(r,'POC Phone');
+      out.push({ id:g(r,'Event ID')||('R'+ri), title, sport:g(r,'Sport')||'None', type:g(r,'Event Type')||'Other',
+        operator:g(r,'Operator')||'External / Rental', start, end, st:_to24(g(r,'Start Time')), et:_to24(g(r,'End Time')),
+        atoms:_atoms(sp), spaceLabel:sp||'—', status:g(r,'Status')||'Confirmed', preset:g(r,'Booked-as Preset'),
+        allDay:_yn(g(r,'All Day')), courtShare:_yn(g(r,'Court Share')), repeat:g(r,'Repeat'), seriesId:g(r,'Series ID'),
+        desc:g(r,'Description (public)'), regLink:g(r,'Registration Link'), reg:_num(g(r,'Registration Count')),
+        doorCharge:_yn(g(r,'Door Charge')), paymentLink:g(r,'Payment Link'), attendees:_num(g(r,'Estimated Attendees')),
+        staffing:g(r,'Staffing Level'), facilityRoles:_splitL(g(r,'Facility Staff Roles')), odaRoles:_splitL(g(r,'Oda Up Staff Roles')),
+        catering:_yn(g(r,'Catering Required')), cateringNotes:g(r,'Catering Notes'), externalLink:g(r,'External Link'),
+        poc:(pn||pe||pp)?{name:pn,email:pe,phone:pp}:null, notes:g(r,'Internal Notes'), createdBy:g(r,'Created By') }); }
+    if(!out.length){ setStatus('Demo data — sheet reachable but no events found','warn'); return; }
+    EVENTS.length=0; out.forEach(e=>EVENTS.push(e)); CONFLICTS=computeConflicts(EVENTS);
+    const ds=out.map(e=>e.start).filter(Boolean).sort(); if(ds.length){ const f=new Date(ds[0]+'T00:00'); state.month=f.getMonth(); state.year=f.getFullYear(); }
+    render(); setStatus('Live: '+out.length+' events from your sheet','ok');
+  }catch(err){ setStatus('Demo data — could not reach sheet (works once hosted on GitHub)','warn'); }
+}
 fillFilters();
 render();
+loadLiveData();
 </script>
+<div id="livestatus">Loading\u2026</div>
 </body>
 </html>
