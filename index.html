@@ -15,13 +15,13 @@
     --t1:#fff; --t2:#ccc; --t3:#aaa; --rail:#0d0d0d;
     --display:'Oswald', 'Arial Narrow', sans-serif;
     --body:'Archivo', system-ui, sans-serif;
-    font-size:15px;
+    font-size:16.5px;
   }
   html.light{
     --bg:#fafafa; --card:#fff; --cell:#fff; --border:#e6e6e6;
     --t1:#111; --t2:#444; --t3:#888; --rail:#f3f3f3;
   }
-  html.ts2{font-size:16.5px} html.ts3{font-size:18px}
+  html.ts2{font-size:18px} html.ts3{font-size:20px}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--t1);font-family:var(--body);line-height:1.45;-webkit-font-smoothing:antialiased}
   button{font-family:inherit;cursor:pointer;color:inherit}
@@ -59,8 +59,8 @@
   /* ---------- month grid ---------- */
   .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
   .dow span{font-size:.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);font-weight:600;text-align:center;padding:4px 0}
-  .grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:118px;gap:6px}
-  .cell{background:var(--cell);border:1px solid var(--border);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:3px;height:118px;overflow:hidden;transition:border-color .15s var(--ease-out)}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:128px;gap:6px}
+  .cell{background:var(--cell);border:1px solid var(--border);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:3px;height:128px;overflow:hidden;transition:border-color .15s var(--ease-out)}
   .cell.out{opacity:.4}
   .cell.today{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
   .cell.sel{outline:2px solid var(--gold);outline-offset:1px}
@@ -170,7 +170,7 @@
     .topbar{gap:8px}
   }
   @media (max-width:600px){
-    :root{font-size:14px}
+    :root{font-size:15.5px}
     .wrap{padding:0 10px}
     .topbar{gap:7px;padding:9px 0}
     .brand-logo{padding:4px 8px 3px} .brand-logo img{height:22px} .brand-logo small{font-size:.4rem;letter-spacing:.22em}
@@ -182,12 +182,12 @@
     .nav-arrow{width:32px;height:32px}
     .filt-label{display:none}
     select.filt{flex:0 0 auto}
-    .grid{grid-auto-rows:76px;gap:4px}
-    .cell{height:76px;padding:4px;gap:2px;border-radius:8px}
+    .grid{grid-auto-rows:88px;gap:4px}
+    .cell{height:88px;padding:5px;gap:3px;border-radius:8px}
     .dow{gap:4px} .dow span{font-size:.54rem;padding:2px 0}
     .daynum{font-size:.66rem}
     .today .daynum .tag{font-size:.42rem;padding:1px 4px}
-    .ev{font-size:.5rem;padding:1px 4px;min-height:13px;line-height:1.3;border-radius:4px}
+    .ev{font-size:.62rem;padding:2px 5px;min-height:17px;line-height:1.25;border-radius:5px}
     .ev .ico{font-size:.55rem}
     .closed-banner{font-size:.5rem;padding:2px;line-height:1.1}
     .more{font-size:.54rem;padding:0 2px}
@@ -701,9 +701,7 @@ function fillFilters(){
 }
 document.getElementById('viewseg').onclick=e=>{ if(e.target.dataset.view){ state.view=e.target.dataset.view;
   document.querySelectorAll('#viewseg button').forEach(b=>b.classList.toggle('on',b===e.target));
-  state.selEvent=null; if(state.view==='public'){document.documentElement.classList.remove('dark');document.documentElement.classList.add('light');state.theme='light';document.getElementById('themebtn').textContent='☀';}
-  else{document.documentElement.classList.add('dark');document.documentElement.classList.remove('light');state.theme='dark';document.getElementById('themebtn').textContent='☾';}
-  render(); } };
+  state.selEvent=null; render(); } };
 document.getElementById('modeseg').onclick=e=>{ if(e.target.dataset.mode){ state.mode=e.target.dataset.mode;
   document.querySelectorAll('#modeseg button').forEach(b=>b.classList.toggle('on',b===e.target)); render(); } };
 document.getElementById('prev').onclick=()=>{ state.month--; if(state.month<0){state.month=11;state.year--;} render(); };
@@ -831,7 +829,26 @@ async function loadLiveData(){
     render(); setStatus('Live: '+out.length+' events from your sheet','ok');
   }catch(err){ setStatus('Demo data — could not reach sheet (works once hosted on GitHub)','warn'); }
 }
+function applyParams(){
+  const q=new URLSearchParams(location.search);
+  const v=(q.get('view')||'').toLowerCase();
+  const op=q.get('operator');
+  if(v==='internal'){ state.view='internal'; }
+  else if(v==='public'||v==='club'){
+    state.view='public';
+    document.querySelectorAll('#viewseg button').forEach(b=>b.classList.toggle('on',b.dataset.view==='public'));
+  }
+  if(op){ state.op=op.trim(); const sel=document.getElementById('opfilt'); if(sel)sel.value=state.op; }
+  state.locked=(v==='club');
+  if(state.locked){
+    const vs=document.getElementById('viewseg'); if(vs)vs.style.display='none';
+    const of=document.getElementById('opfilt'); if(of)of.style.display='none';
+    const ol=document.getElementById('opfilt-l'); if(ol)ol.style.display='none';
+    const small=document.querySelector('.brand-logo small'); if(small&&op)small.textContent=op+' Calendar';
+  }
+}
 fillFilters();
+applyParams();
 render();
 loadLiveData();
 </script>
